@@ -5,6 +5,9 @@ let passwords = {
     '绮绮': '333333'  // 添加新用户
 };
 
+const API_KEY = '$2a$10$wOmTn4Cr7PHuI890cNFZyuEtHvf0X8qJonUTsQDmkdpYJO7sy.fiS';
+const BIN_ID = '66fc1337acd3cb34a88f79ab';
+
 function showLoginForm() {
     document.getElementById('login-form').style.display = 'block';
 }
@@ -88,70 +91,100 @@ function sendMessage() {
     const message = messageInput.value.trim();
 
     if (message) {
-        const messages = JSON.parse(localStorage.getItem('messages') || '[]');
-        messages.push({ 
+        const newMessage = { 
             sender: currentUser, 
             content: message, 
             timestamp: Date.now() 
-        });
-        localStorage.setItem('messages', JSON.stringify(messages));
-        messageInput.value = '';
-        loadMessages();
+        };
+        
+        fetch(`https://api.jsonbin.io/v3/b/${BIN_ID}`, {
+            method: 'GET',
+            headers: {
+                'X-Master-Key': API_KEY
+            }
+        })
+        .then(response => response.json())
+        .then(data => {
+            const messages = data.record.messages || [];
+            messages.push(newMessage);
+            return fetch(`https://api.jsonbin.io/v3/b/${BIN_ID}`, {
+                method: 'PUT',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-Master-Key': API_KEY
+                },
+                body: JSON.stringify({ messages: messages })
+            });
+        })
+        .then(() => {
+            messageInput.value = '';
+            loadMessages();
+        })
+        .catch(error => console.error('Error:', error));
     }
 }
 
 function loadMessages() {
     const chatContainer = document.getElementById('chat-container');
     chatContainer.innerHTML = '';
-    const messages = JSON.parse(localStorage.getItem('messages') || '[]');
 
-    messages.forEach((message, index) => {
-        const messageElement = document.createElement('div');
-        
-        let messageTime = '时间未知';
-        if (message.timestamp) {
-            const date = new Date(message.timestamp);
-            if (!isNaN(date.getTime())) {
-                messageTime = date.toLocaleString('zh-CN', {
-                    year: 'numeric',
-                    month: '2-digit',
-                    day: '2-digit',
-                    hour: '2-digit',
-                    minute: '2-digit',
-                    hour12: false
-                });
+    fetch(`https://api.jsonbin.io/v3/b/${BIN_ID}`, {
+        method: 'GET',
+        headers: {
+            'X-Master-Key': API_KEY
+        }
+    })
+    .then(response => response.json())
+    .then(data => {
+        const messages = data.record.messages || [];
+        messages.forEach((message, index) => {
+            const messageElement = document.createElement('div');
+            
+            let messageTime = '时间未知';
+            if (message.timestamp) {
+                const date = new Date(message.timestamp);
+                if (!isNaN(date.getTime())) {
+                    messageTime = date.toLocaleString('zh-CN', {
+                        year: 'numeric',
+                        month: '2-digit',
+                        day: '2-digit',
+                        hour: '2-digit',
+                        minute: '2-digit',
+                        hour12: false
+                    });
+                }
             }
-        }
-        
-        if (message.type === 'system') {
-            messageElement.className = 'message-system';
-            messageElement.innerHTML = `
-                ${currentUser ? message.content : '系统消息'}
-                <div class="message-time">${messageTime}</div>
-            `;
-        } else if (message.type === 'image') {
-            messageElement.className = 'message';
-            messageElement.style.backgroundColor = getMessageColor(message.sender);
-            messageElement.innerHTML = currentUser ? `
-                <img src="${message.content}" alt="用户上传的图片" style="max-width: 200px;">
-                <div class="message-time">${messageTime}</div>
-            ` : `
-                <div>图片消息</div>
-                <div class="message-time">${messageTime}</div>
-            `;
-        } else {
-            messageElement.className = 'message';
-            messageElement.style.backgroundColor = getMessageColor(message.sender);
-            messageElement.innerHTML = `
-                ${currentUser ? message.content : '********'}
-                <div class="message-time">${messageTime}</div>
-            `;
-        }
-        
-        chatContainer.appendChild(messageElement);
-    });
-
-    chatContainer.scrollTop = chatContainer.scrollHeight;
+            
+            if (message.type === 'system') {
+                messageElement.className = 'message-system';
+                messageElement.innerHTML = `
+                    ${currentUser ? message.content : '系统消息'}
+                    <div class="message-time">${messageTime}</div>
+                `;
+            } else if (message.type === 'image') {
+                messageElement.className = 'message';
+                messageElement.style.backgroundColor = getMessageColor(message.sender);
+                messageElement.innerHTML = currentUser ? `
+                    <img src="${message.content}" alt="用户上传的图片" style="max-width: 200px;">
+                    <div class="message-time">${messageTime}</div>
+                ` : `
+                    <div>图片消息</div>
+                    <div class="message-time">${messageTime}</div>
+                `;
+            } else {
+                messageElement.className = 'message';
+                messageElement.style.backgroundColor = getMessageColor(message.sender);
+                messageElement.innerHTML = `
+                    ${currentUser ? message.content : '********'}
+                    <div class="message-time">${messageTime}</div>
+                `;
+            }
+            
+            chatContainer.appendChild(messageElement);
+        });
+        chatContainer.scrollTop = chatContainer.scrollHeight;
+    })
+    .catch(error => console.error('Error:', error));
 }
 
 function getMessageColor(sender) {
@@ -175,12 +208,13 @@ function checkLoginStatus() {
         document.getElementById('message-input').style.display = 'flex';
         document.getElementById('settings-button').style.display = 'block';
         
-        // 检查登录状态时也要检查是否显示清空留言按钮
+        // 检查是否显示清空留言按钮
         const clearMessagesOption = document.getElementById('clear-messages-option');
         if (clearMessagesOption) {
             clearMessagesOption.style.display = storedUser === '琦琦' ? 'block' : 'none';
         }
     } else {
+        currentUser = null;
         document.getElementById('login-button').style.display = 'block';
         document.getElementById('message-input').style.display = 'none';
         document.getElementById('settings-button').style.display = 'none';
@@ -191,15 +225,12 @@ function checkLoginStatus() {
             clearMessagesOption.style.display = 'none';
         }
     }
+    
     loadMessages();
 }
 
-// 在页面加载完成后立即隐藏清空留言按钮
+// 在页面加载完成后执行
 window.onload = function() {
-    const clearMessagesOption = document.getElementById('clear-messages-option');
-    if (clearMessagesOption) {
-        clearMessagesOption.style.display = 'none';
-    }
     checkLoginStatus();
 };
 
@@ -244,9 +275,19 @@ function confirmClearMessages() {
 
 function clearMessages() {
     if (currentUser === '琦琦') {
-        localStorage.removeItem('messages');
-        loadMessages();
-        alert('所有留言已清空。');
+        fetch(`https://api.jsonbin.io/v3/b/${BIN_ID}`, {
+            method: 'PUT',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-Master-Key': API_KEY
+            },
+            body: JSON.stringify({ messages: [] })
+        })
+        .then(() => {
+            loadMessages();
+            alert('所有留言已清空。');
+        })
+        .catch(error => console.error('Error:', error));
     }
 }
 
@@ -264,16 +305,37 @@ function handleImageUpload(event) {
 
 function sendImage() {
     const imageData = document.getElementById('preview-image').src;
-    const messages = JSON.parse(localStorage.getItem('messages') || '[]');
-    messages.push({ 
+    const newMessage = { 
         sender: currentUser, 
         content: imageData,
         type: 'image', 
         timestamp: Date.now() 
-    });
-    localStorage.setItem('messages', JSON.stringify(messages));
-    cancelImageUpload();
-    loadMessages();
+    };
+
+    fetch(`https://api.jsonbin.io/v3/b/${BIN_ID}`, {
+        method: 'GET',
+        headers: {
+            'X-Master-Key': API_KEY
+        }
+    })
+    .then(response => response.json())
+    .then(data => {
+        const messages = data.record.messages || [];
+        messages.push(newMessage);
+        return fetch(`https://api.jsonbin.io/v3/b/${BIN_ID}`, {
+            method: 'PUT',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-Master-Key': API_KEY
+            },
+            body: JSON.stringify({ messages: messages })
+        });
+    })
+    .then(() => {
+        cancelImageUpload();
+        loadMessages();
+    })
+    .catch(error => console.error('Error:', error));
 }
 
 function cancelImageUpload() {
